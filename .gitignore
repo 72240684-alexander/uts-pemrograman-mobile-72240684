@@ -1,0 +1,16 @@
+
+# File sementara Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Hasil build .NET
+**/bin/
+**/obj/
+
+# File konfigurasi lokal dan rahasia
+.env
+.env.*
+!.env.example

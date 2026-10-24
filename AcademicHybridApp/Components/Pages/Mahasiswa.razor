@@ -1,0 +1,595 @@
+﻿@page "/mahasiswa"
+@using System.Net.Http.Json
+@using System.ComponentModel.DataAnnotations
+@using System.Linq
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Data Mahasiswa</PageTitle>
+
+<div class="container-fluid py-3">
+    <h1>Data Mahasiswa</h1>
+    <p class="text-muted">Kelola data mahasiswa dan dosen wali.</p>
+
+    @if (!string.IsNullOrWhiteSpace(notifikasi))
+    {
+        <div class="alert @(berhasil ? "alert-success" : "alert-danger")">
+            @notifikasi
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">
+                @(modeEdit ? "Edit Mahasiswa" : "Tambah Mahasiswa")
+            </h5>
+
+            <EditForm Model="formMahasiswa" OnValidSubmit="SimpanMahasiswa">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">NIM</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formMahasiswa.Nim" />
+                        <ValidationMessage For="@(() => formMahasiswa.Nim)" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nama Mahasiswa</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formMahasiswa.NamaMahasiswa" />
+                        <ValidationMessage For="@(() => formMahasiswa.NamaMahasiswa)" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Email</label>
+                        <InputText class="form-control"
+                                   @bind-Value="formMahasiswa.Email" />
+                        <ValidationMessage For="@(() => formMahasiswa.Email)" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Angkatan</label>
+                        <InputSelect class="form-select"
+                                     @bind-Value="formMahasiswa.Angkatan">
+                            <option value="0">Pilih angkatan</option>
+                            @for (int tahun = 2020; tahun <= 2026; tahun++)
+                            {
+                                <option value="@tahun">@tahun</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => formMahasiswa.Angkatan)" />
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Dosen Wali</label>
+                        <InputSelect class="form-select"
+                                     @bind-Value="formMahasiswa.DosenId">
+                            <option value="0">Pilih dosen wali</option>
+                            @foreach (var item in dosen)
+                            {
+                                <option value="@item.DosenId">
+                                    @item.NamaDosen
+                                </option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => formMahasiswa.DosenId)" />
+
+                        @if (dosen.Count == 0)
+                        {
+                            <small class="text-danger">
+                                Data dosen belum tersedia. Periksa koneksi API.
+                            </small>
+                        }
+                    </div>
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button type="submit"
+                            class="btn btn-primary"
+                            disabled="@sedangMenyimpan">
+                        @(sedangMenyimpan
+                                                ? "Menyimpan..."
+                                                : modeEdit
+                                                ? "Simpan Perubahan"
+                                                : "Tambah Mahasiswa")
+                    </button>
+
+                    @if (modeEdit)
+                    {
+                        <button type="button"
+                                class="btn btn-secondary"
+                                disabled="@sedangMenyimpan"
+                                @onclick="BatalEdit">
+                            Batal
+                        </button>
+                    }
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                <h5 class="mb-0">Daftar Mahasiswa</h5>
+
+                <button class="btn btn-outline-primary btn-sm"
+                        disabled="@sedangMemuat"
+                        @onclick="MuatData">
+                    Muat Ulang
+                </button>
+            </div>
+
+            <div class="mb-3">
+                <input class="form-control"
+                       placeholder="Cari NIM, nama, email, angkatan, atau dosen wali..."
+                       @bind="kataKunci"
+                       @bind:event="oninput"
+                       @bind:after="ResetHalaman" />
+            </div>
+
+            @if (sedangMemuat)
+            {
+                <p>Memuat data mahasiswa...</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(errorMuat))
+            {
+                <div class="alert alert-danger">
+                    @errorMuat
+                </div>
+            }
+            else if (mahasiswa.Count == 0)
+            {
+                <p>Belum ada data mahasiswa.</p>
+            }
+            else if (!mahasiswaTersaring.Any())
+            {
+                <div class="alert alert-info">
+                    Data mahasiswa tidak ditemukan.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-dark text-decoration-none fw-bold"
+                                            @onclick='() => Urutkan("Nim")'>
+                                        NIM @(kolomUrut == "Nim"
+                                                                            ? (urutanNaik ? "↑" : "↓")
+                                                                            : "")
+                                </button>
+                            </th>
+
+                                <th>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-dark text-decoration-none fw-bold"
+                                            @onclick='() => Urutkan("NamaMahasiswa")'>
+                                        Nama Mahasiswa @(kolomUrut == "NamaMahasiswa"
+                                                                        ? (urutanNaik ? "↑" : "↓")
+                                                                        : "")
+                                </button>
+                            </th>
+
+                                <th>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-dark text-decoration-none fw-bold"
+                                            @onclick='() => Urutkan("Email")'>
+                                        Email @(kolomUrut == "Email"
+                                                                        ? (urutanNaik ? "↑" : "↓")
+                                                                        : "")
+                                </button>
+                            </th>
+
+                                <th>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-dark text-decoration-none fw-bold"
+                                            @onclick='() => Urutkan("Angkatan")'>
+                                        Angkatan @(kolomUrut == "Angkatan"
+                                                                        ? (urutanNaik ? "↑" : "↓")
+                                                                        : "")
+                                </button>
+                            </th>
+
+                                <th>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-dark text-decoration-none fw-bold"
+                                            @onclick='() => Urutkan("NamaDosenWali")'>
+                                        Dosen Wali @(kolomUrut == "NamaDosenWali"
+                                                                        ? (urutanNaik ? "↑" : "↓")
+                                                                        : "")
+                                </button>
+                            </th>
+
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                        @foreach (var item in mahasiswaPerHalaman)
+                            {
+                                <tr @key="item.MahasiswaId">
+                                    <td>@item.Nim</td>
+                                    <td>@item.NamaMahasiswa</td>
+                                    <td>@item.Email</td>
+                                    <td>@item.Angkatan</td>
+                                    <td>@item.NamaDosenWali</td>
+                                    <td>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-warning btn-sm"
+                                                    disabled="@sedangMenyimpan"
+                                                    @onclick="() => MulaiEdit(item)">
+                                                Edit
+                                            </button>
+
+                                            <button class="btn btn-danger btn-sm"
+                                                    disabled="@sedangMenyimpan"
+                                                    @onclick="() => HapusMahasiswa(item)">
+                                                Hapus
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                    <span class="text-muted">
+                        Halaman @halamanSaatIni dari @totalHalaman
+                        — Total @mahasiswaTersaring.Count() data
+                    </span>
+
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm"
+                                disabled="@(halamanSaatIni <= 1)"
+                                @onclick="HalamanSebelumnya">
+                            Sebelumnya
+                        </button>
+
+                        <button class="btn btn-outline-primary btn-sm"
+                                disabled="@(halamanSaatIni >= totalHalaman)"
+                                @onclick="HalamanBerikutnya">
+                            Berikutnya
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<MahasiswaDto> mahasiswa = new();
+    private List<DosenDto> dosen = new();
+    private FormMahasiswa formMahasiswa = new();
+
+    private string kataKunci = "";
+
+    private string kolomUrut = "NamaMahasiswa";
+    private bool urutanNaik = true;
+
+    private int halamanSaatIni = 1;
+    private int jumlahPerHalaman = 5;
+
+    private IEnumerable<MahasiswaDto> mahasiswaTersaring =>
+        mahasiswa.Where(m =>
+            (m.Nim ?? "").Contains(
+                kataKunci ?? "", StringComparison.OrdinalIgnoreCase) ||
+            (m.NamaMahasiswa ?? "").Contains(
+                kataKunci ?? "", StringComparison.OrdinalIgnoreCase) ||
+            (m.Email ?? "").Contains(
+                kataKunci ?? "", StringComparison.OrdinalIgnoreCase) ||
+            m.Angkatan.ToString().Contains(
+                kataKunci ?? "", StringComparison.OrdinalIgnoreCase) ||
+            (m.NamaDosenWali ?? "").Contains(
+                kataKunci ?? "", StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<MahasiswaDto> mahasiswaTerurut =>
+        kolomUrut switch
+        {
+            "Nim" => urutanNaik
+                ? mahasiswaTersaring.OrderBy(m => m.Nim)
+                : mahasiswaTersaring.OrderByDescending(m => m.Nim),
+
+            "NamaMahasiswa" => urutanNaik
+                ? mahasiswaTersaring.OrderBy(m => m.NamaMahasiswa)
+                : mahasiswaTersaring.OrderByDescending(m => m.NamaMahasiswa),
+
+            "Email" => urutanNaik
+                ? mahasiswaTersaring.OrderBy(m => m.Email)
+                : mahasiswaTersaring.OrderByDescending(m => m.Email),
+
+            "Angkatan" => urutanNaik
+                ? mahasiswaTersaring.OrderBy(m => m.Angkatan)
+                : mahasiswaTersaring.OrderByDescending(m => m.Angkatan),
+
+            "NamaDosenWali" => urutanNaik
+                ? mahasiswaTersaring.OrderBy(m => m.NamaDosenWali)
+                : mahasiswaTersaring.OrderByDescending(m => m.NamaDosenWali),
+
+            _ => mahasiswaTersaring.OrderBy(m => m.NamaMahasiswa)
+        };
+
+    private int totalHalaman =>
+        Math.Max(1, (int)Math.Ceiling(
+            mahasiswaTersaring.Count() / (double)jumlahPerHalaman));
+
+    private IEnumerable<MahasiswaDto> mahasiswaPerHalaman =>
+        mahasiswaTerurut
+            .Skip((halamanSaatIni - 1) * jumlahPerHalaman)
+            .Take(jumlahPerHalaman);
+
+    private void Urutkan(string kolom)
+    {
+        if (kolomUrut == kolom)
+        {
+            urutanNaik = !urutanNaik;
+        }
+        else
+        {
+            kolomUrut = kolom;
+            urutanNaik = true;
+        }
+
+        halamanSaatIni = 1;
+    }
+
+    private int idEdit;
+    private bool modeEdit;
+    private bool sedangMemuat;
+    private bool sedangMenyimpan;
+    private bool berhasil;
+    private string? notifikasi;
+    private string? errorMuat;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MuatData();
+    }
+
+    private async Task MuatData()
+    {
+        sedangMemuat = true;
+        errorMuat = null;
+
+        try
+        {
+            var hasilMahasiswa =
+                Http.GetFromJsonAsync<List<MahasiswaDto>>("api/Mahasiswa");
+
+            var hasilDosen =
+                Http.GetFromJsonAsync<List<DosenDto>>("api/Dosen");
+
+            await Task.WhenAll(hasilMahasiswa, hasilDosen);
+
+            mahasiswa = await hasilMahasiswa ?? new List<MahasiswaDto>();
+            dosen = await hasilDosen ?? new List<DosenDto>();
+
+            PeriksaHalaman();
+        }
+        catch (Exception)
+        {
+            errorMuat = "Gagal memuat data. Pastikan AcademicAPI sedang berjalan.";
+        }
+        finally
+        {
+            sedangMemuat = false;
+        }
+    }
+
+    private void HalamanSebelumnya()
+    {
+        if (halamanSaatIni > 1)
+        {
+            halamanSaatIni--;
+        }
+    }
+
+    private void HalamanBerikutnya()
+    {
+        if (halamanSaatIni < totalHalaman)
+        {
+            halamanSaatIni++;
+        }
+    }
+
+    private void ResetHalaman()
+    {
+        halamanSaatIni = 1;
+    }
+
+    private void PeriksaHalaman()
+    {
+        if (halamanSaatIni > totalHalaman)
+        {
+            halamanSaatIni = totalHalaman;
+        }
+
+        if (halamanSaatIni < 1)
+        {
+            halamanSaatIni = 1;
+        }
+    }
+
+    private async Task SimpanMahasiswa()
+    {
+        if (sedangMenyimpan)
+            return;
+
+        sedangMenyimpan = true;
+        notifikasi = null;
+
+        try
+        {
+            HttpResponseMessage respons;
+
+            if (modeEdit)
+            {
+                respons = await Http.PutAsJsonAsync(
+                    $"api/Mahasiswa/{idEdit}", formMahasiswa);
+            }
+            else
+            {
+                respons = await Http.PostAsJsonAsync(
+                    "api/Mahasiswa", formMahasiswa);
+            }
+
+            if (respons.IsSuccessStatusCode)
+            {
+                berhasil = true;
+                notifikasi = modeEdit
+                    ? "Data mahasiswa berhasil diperbarui."
+                    : "Mahasiswa berhasil ditambahkan.";
+
+                modeEdit = false;
+                idEdit = 0;
+                formMahasiswa = new FormMahasiswa();
+
+                await MuatData();
+            }
+            else
+            {
+                berhasil = false;
+                var isi = await respons.Content.ReadAsStringAsync();
+
+                if (respons.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    notifikasi = "NIM sudah digunakan. Gunakan NIM yang berbeda.";
+                }
+                else if (respons.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    notifikasi = "Dosen wali tidak tersedia atau data tidak valid. " + isi;
+                }
+                else
+                {
+                    notifikasi = $"Gagal menyimpan data. {isi}";
+                }
+            }
+        }
+        catch (Exception)
+        {
+            berhasil = false;
+            notifikasi = "Tidak dapat terhubung ke AcademicAPI.";
+        }
+        finally
+        {
+            sedangMenyimpan = false;
+        }
+    }
+
+    private void MulaiEdit(MahasiswaDto item)
+    {
+        idEdit = item.MahasiswaId;
+        modeEdit = true;
+
+        formMahasiswa = new FormMahasiswa
+        {
+            Nim = item.Nim,
+            NamaMahasiswa = item.NamaMahasiswa,
+            Email = item.Email,
+            Angkatan = item.Angkatan,
+            DosenId = item.DosenId
+        };
+
+        notifikasi = null;
+    }
+
+    private void BatalEdit()
+    {
+        modeEdit = false;
+        idEdit = 0;
+        formMahasiswa = new FormMahasiswa();
+        notifikasi = null;
+    }
+
+    private async Task HapusMahasiswa(MahasiswaDto item)
+    {
+        if (sedangMenyimpan)
+            return;
+
+        bool konfirmasi = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Apakah kamu yakin ingin menghapus mahasiswa {item.NamaMahasiswa}?");
+
+        if (!konfirmasi)
+            return;
+
+        sedangMenyimpan = true;
+        notifikasi = null;
+
+        try
+        {
+            var respons = await Http.DeleteAsync(
+                $"api/Mahasiswa/{item.MahasiswaId}");
+
+            if (respons.IsSuccessStatusCode)
+            {
+                berhasil = true;
+                notifikasi = "Data mahasiswa berhasil dihapus.";
+                await MuatData();
+            }
+            else
+            {
+                berhasil = false;
+                var isi = await respons.Content.ReadAsStringAsync();
+                notifikasi = $"Gagal menghapus data mahasiswa. {isi}";
+            }
+        }
+        catch (Exception)
+        {
+            berhasil = false;
+            notifikasi = "Tidak dapat terhubung ke AcademicAPI.";
+        }
+        finally
+        {
+            sedangMenyimpan = false;
+        }
+    }
+
+    public class MahasiswaDto
+    {
+        public int MahasiswaId { get; set; }
+        public string Nim { get; set; } = "";
+        public string NamaMahasiswa { get; set; } = "";
+        public string Email { get; set; } = "";
+        public int Angkatan { get; set; }
+        public int DosenId { get; set; }
+        public string? NamaDosenWali { get; set; }
+    }
+
+    public class DosenDto
+    {
+        public int DosenId { get; set; }
+        public string Nidn { get; set; } = "";
+        public string NamaDosen { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Prodi { get; set; } = "";
+    }
+
+    public class FormMahasiswa
+    {
+        [Required(ErrorMessage = "NIM wajib diisi.")]
+        public string Nim { get; set; } = "";
+
+        [Required(ErrorMessage = "Nama mahasiswa wajib diisi.")]
+        public string NamaMahasiswa { get; set; } = "";
+
+        [Required(ErrorMessage = "Email wajib diisi.")]
+        [EmailAddress(ErrorMessage = "Format email tidak valid.")]
+        public string Email { get; set; } = "";
+
+        [Range(2020, 2026, ErrorMessage = "Pilih angkatan 2020 sampai 2026.")]
+        public int Angkatan { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Pilih dosen wali.")]
+        public int DosenId { get; set; }
+    }
+}

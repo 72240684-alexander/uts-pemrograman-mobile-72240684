@@ -1,0 +1,187 @@
+﻿@page "/"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<PageTitle>Dashboard Akademik</PageTitle>
+
+<div class="container-fluid py-3">
+    <h1 class="mb-2">Dashboard Akademik</h1>
+    <p class="text-muted mb-4">Sistem Informasi Akademik</p>
+
+    @if (isLoading)
+    {
+        <p>Memuat data dari AcademicAPI...</p>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            @errorMessage
+            <button class="btn btn-outline-danger btn-sm ms-2"
+                    @onclick="MuatData">
+                Coba Lagi
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Data Dosen</h5>
+                        <h2 class="text-primary">@dosen.Count</h2>
+                        <p class="text-muted">Jumlah dosen terdaftar.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Data Mahasiswa</h5>
+                        <h2 class="text-success">@mahasiswa.Count</h2>
+                        <p class="text-muted">Jumlah mahasiswa terdaftar.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Daftar Dosen</h5>
+
+                @if (dosen.Count == 0)
+                {
+                    <p>Belum ada data dosen.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>NIDN</th>
+                                    <th>Nama Dosen</th>
+                                    <th>Email</th>
+                                    <th>Program Studi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in dosen)
+                                {
+                                    <tr>
+                                        <td>@item.Nidn</td>
+                                        <td>@item.NamaDosen</td>
+                                        <td>@item.Email</td>
+                                        <td>@item.Prodi</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Daftar Mahasiswa</h5>
+
+                @if (mahasiswa.Count == 0)
+                {
+                    <p>Belum ada data mahasiswa.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>NIM</th>
+                                    <th>Nama Mahasiswa</th>
+                                    <th>Email</th>
+                                    <th>Angkatan</th>
+                                    <th>Dosen Wali</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in mahasiswa)
+                                {
+                                    <tr>
+                                        <td>@item.Nim</td>
+                                        <td>@item.NamaMahasiswa</td>
+                                        <td>@item.Email</td>
+                                        <td>@item.Angkatan</td>
+                                        <td>@item.NamaDosenWali</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<DosenDto> dosen = new();
+    private List<MahasiswaDto> mahasiswa = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MuatData();
+    }
+
+    private async Task MuatData()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var hasilDosen = Http.GetFromJsonAsync<List<DosenDto>>(
+                "api/Dosen");
+
+            var hasilMahasiswa = Http.GetFromJsonAsync<List<MahasiswaDto>>(
+                "api/Mahasiswa");
+
+            await Task.WhenAll(hasilDosen, hasilMahasiswa);
+
+            dosen = await hasilDosen ?? new List<DosenDto>();
+            mahasiswa = await hasilMahasiswa ?? new List<MahasiswaDto>();
+        }
+        catch (Exception)
+        {
+            errorMessage =
+                "Gagal mengambil data. Pastikan AcademicAPI sedang berjalan.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    public class DosenDto
+    {
+        public int DosenId { get; set; }
+        public string Nidn { get; set; } = "";
+        public string NamaDosen { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Prodi { get; set; } = "";
+    }
+
+    public class MahasiswaDto
+    {
+        public int MahasiswaId { get; set; }
+        public string Nim { get; set; } = "";
+        public string NamaMahasiswa { get; set; } = "";
+        public string Email { get; set; } = "";
+        public int Angkatan { get; set; }
+        public int DosenId { get; set; }
+        public string? NamaDosenWali { get; set; }
+    }
+}
